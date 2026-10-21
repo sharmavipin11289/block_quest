@@ -15,10 +15,10 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final best = ref.watch(gameProvider.select((g) => g.bestScore));
 
-    void openGame() {
+    void openGame(GameMode mode) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const GameScreen()),
+        MaterialPageRoute(builder: (_) => GameScreen(mode: mode)),
       );
     }
 
@@ -45,8 +45,88 @@ class HomeScreen extends ConsumerWidget {
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final contentWidth = min(420.0, constraints.maxWidth - 40);
-              final logoHeight = min(270.0, contentWidth * .92);
+              final wideLayout =
+                  constraints.maxWidth > constraints.maxHeight &&
+                  constraints.maxWidth >= 700;
+              final availableWidth = wideLayout
+                  ? (constraints.maxWidth - 64) / 2
+                  : constraints.maxWidth - 40;
+              final contentWidth = min(420.0, availableWidth);
+              final logoHeight = min(
+                270.0,
+                min(contentWidth * .92, constraints.maxHeight * .78),
+              );
+              final logo = Image.asset(
+                'assets/images/block_quest_wordmark.png',
+                width: contentWidth,
+                height: logoHeight,
+                fit: BoxFit.contain,
+                semanticLabel: 'Block Quest - Puzzle Adventure',
+              );
+              final menu = Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _BestScoreCard(score: best),
+                  const SizedBox(height: 24),
+                  _HomeActionButton(
+                    label: 'Adventure',
+                    icon: Icons.schedule_rounded,
+                    colors: AppColors.adventure,
+                    onPressed: () => openGame(GameMode.adventure),
+                  ),
+                  const SizedBox(height: 14),
+                  _HomeActionButton(
+                    label: 'Classic',
+                    icon: Icons.all_inclusive_rounded,
+                    colors: AppColors.classic,
+                    onPressed: () => openGame(GameMode.classic),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton.icon(
+                    onPressed: openSettings,
+                    icon: const Icon(Icons.settings_rounded),
+                    label: const Text('Settings'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white.withValues(alpha: .9),
+                      textStyle: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+
+              if (wideLayout) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 900),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: contentWidth,
+                            height: constraints.maxHeight - 24,
+                            child: Center(child: logo),
+                          ),
+                          const SizedBox(width: 24),
+                          SizedBox(
+                            width: contentWidth,
+                            child: SingleChildScrollView(
+                              child: Center(child: menu),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
 
               return SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(
@@ -62,46 +142,7 @@ class HomeScreen extends ConsumerWidget {
                       constraints: BoxConstraints(maxWidth: contentWidth),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Image.asset(
-                            'assets/images/block_quest_wordmark.png',
-                            width: contentWidth,
-                            height: logoHeight,
-                            fit: BoxFit.contain,
-                            semanticLabel: 'Block Quest - Puzzle Adventure',
-                          ),
-                          const SizedBox(height: 8),
-                          _BestScoreCard(score: best),
-                          const SizedBox(height: 24),
-                          _HomeActionButton(
-                            label: 'Adventure',
-                            icon: Icons.schedule_rounded,
-                            colors: AppColors.adventure,
-                            onPressed: openGame,
-                          ),
-                          const SizedBox(height: 14),
-                          _HomeActionButton(
-                            label: 'Classic',
-                            icon: Icons.all_inclusive_rounded,
-                            colors: AppColors.classic,
-                            onPressed: openGame,
-                          ),
-                          const SizedBox(height: 16),
-                          TextButton.icon(
-                            onPressed: openSettings,
-                            icon: const Icon(Icons.settings_rounded),
-                            label: const Text('Settings'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.white.withValues(
-                                alpha: .9,
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
+                        children: [logo, const SizedBox(height: 8), menu],
                       ),
                     ),
                   ),

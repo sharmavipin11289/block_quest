@@ -15,6 +15,7 @@ import 'package:block_quest/features/game/presentation/game_viewmodel.dart';
 import 'package:block_quest/features/game/presentation/line_clear_feedback.dart';
 import 'package:block_quest/features/home/presentation/home_screen.dart';
 import 'package:block_quest/features/settings/presentation/settings_screen.dart';
+import 'package:block_quest/features/settings/presentation/legal_document_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,34 @@ void main() {
     );
   });
 
+  testWidgets('places a block in the bottom-right board cell', (tester) async {
+    await _pumpGame(tester, Board.empty());
+
+    await _dropAtCell(tester, 7, 7, inset: .49);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(GameScreen)),
+    );
+    final state = container.read(gameProvider);
+
+    expect(state.score, 1);
+    expect(state.board.cells[7][7], isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('places a block on the landscape board', (tester) async {
+    await _pumpGame(tester, Board.empty(), screenSize: const Size(844, 390));
+
+    await _dropAtCell(tester, 2, 2);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(GameScreen)),
+    );
+    final state = container.read(gameProvider);
+
+    expect(state.score, 1);
+    expect(state.board.cells[2][2], isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('adapts home, game, and settings across form factors', (
     tester,
   ) async {
@@ -115,12 +144,101 @@ void main() {
             gameButtons.every((button) => button.onPressed != null),
             isTrue,
           );
-          expect(gameButtons[0].onPressed, same(gameButtons[1].onPressed));
+          expect(
+            gameButtons[0].onPressed,
+            isNot(same(gameButtons[1].onPressed)),
+          );
+        }
+        if (screen is GameScreen && size.width > size.height) {
+          expect(
+            tester.getSize(find.byType(DragTarget<int>)).width,
+            greaterThanOrEqualTo(250),
+            reason: 'The landscape board should remain playable at $size',
+          );
         }
         expect(tester.takeException(), isNull, reason: '$screen at $size');
       }
     }
     addTearDown(tester.view.resetPhysicalSize);
+  });
+
+  testWidgets('home opens Adventure and Classic with their selected modes', (
+    tester,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          gameProvider.overrideWith(() => _TestGameViewModel(Board.empty())),
+        ],
+        child: MaterialApp(
+          theme: BlockQuestApp.appTheme,
+          home: const HomeScreen(),
+        ),
+      ),
+    );
+
+    tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'Classic'))
+        .onPressed!
+        .call();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(
+      tester.widget<GameScreen>(find.byType(GameScreen).last).mode,
+      GameMode.classic,
+    );
+
+    Navigator.of(tester.element(find.byType(GameScreen))).pop();
+    await tester.pump(const Duration(milliseconds: 350));
+    tester
+        .widget<FilledButton>(find.widgetWithText(FilledButton, 'Adventure'))
+        .onPressed!
+        .call();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(
+      tester.widget<GameScreen>(find.byType(GameScreen).last).mode,
+      GameMode.adventure,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings opens the selected privacy and terms documents', (
+    tester,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [prefsProvider.overrideWithValue(prefs)],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+
+    await tester.tap(find.text('Privacy Policy'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Could not load'), findsNothing);
+    expect(find.text('Privacy Policy'), findsOneWidget);
+    final privacyText = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .map((widget) => widget.text.toPlainText())
+        .join(' ');
+    expect(privacyText, contains('This Privacy Policy explains how'));
+    expect(privacyText, isNot(contains('Acceptance of Terms')));
+
+    Navigator.of(tester.element(find.byType(LegalDocumentScreen))).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Terms and Conditions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Terms and Conditions'), findsOneWidget);
+    final termsText = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .map((widget) => widget.text.toPlainText())
+        .join(' ');
+    expect(termsText, contains('By downloading, installing or playing'));
+    expect(termsText, isNot(contains('1. Introduction')));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('places a block and clears a completed horizontal row', (
@@ -369,10 +487,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('spaces level and lines at the sides and centers combo', (
+    tester,
+  ) async {
+    await _pumpGame(
+      tester,
+      Board.empty(),
+      initialState: GameState(
+        board: Board.empty(),
+        availableBlocks: const [
+          _TestGameViewModel.singleBlock,
+          _TestGameViewModel.singleBlock,
+          _TestGameViewModel.singleBlock,
+        ],
+        combo: 2,
+        status: GameStatus.playing,
+      ),
+    );
+
+    final levelRect = tester.getRect(find.text('LEVEL 1/30'));
+    final comboRect = tester.getRect(find.text('COMBO ×2'));
+    final linesRect = tester.getRect(find.text('LINES 0/3'));
+
+    expect(levelRect.right, lessThan(comboRect.left));
+    expect(linesRect.left, greaterThan(comboRect.right));
+    expect(comboRect.center.dx, closeTo(195, 1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows celebration on level completion', (tester) async {
     await _pumpGame(
       tester,
       Board.empty(),
+      screenSize: const Size(844, 390),
       initialState: GameState(
         board: Board.empty(),
         availableBlocks: const [
@@ -417,6 +564,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('classic shows retry without adventure level progress', (
+    tester,
+  ) async {
+    await _pumpGame(
+      tester,
+      Board.empty(),
+      mode: GameMode.classic,
+      initialState: GameState(
+        board: Board.empty(),
+        availableBlocks: const [
+          _TestGameViewModel.singleBlock,
+          _TestGameViewModel.singleBlock,
+          _TestGameViewModel.singleBlock,
+        ],
+        score: 778,
+        bestScore: 2081,
+        mode: GameMode.classic,
+        status: GameStatus.gameOver,
+      ),
+    );
+
+    expect(find.text('NO SPACE LEFT'), findsOneWidget);
+    expect(find.text('LEVEL 1/30'), findsNothing);
+    expect(find.textContaining('LINES '), findsNothing);
+    expect(find.text('PLAY AGAIN'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('completes a level and unlocks the next level', () async {
     final prefs = await SharedPreferences.getInstance();
     final container = ProviderContainer(
@@ -439,6 +614,7 @@ void main() {
         ),
       ],
     );
+
     addTearDown(container.dispose);
 
     final viewModel = container.read(gameProvider.notifier);
@@ -455,6 +631,70 @@ void main() {
       isTrue,
     );
   });
+
+  test(
+    'classic play skips level completion and saves a separate best score',
+    () async {
+      final prefs = await SharedPreferences.getInstance();
+      final board = _boardMissingLastRowCell();
+      final container = ProviderContainer(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          gameProvider.overrideWith(
+            () => _ConfiguredGameViewModel(
+              GameState(
+                board: board,
+                availableBlocks: const [
+                  _TestGameViewModel.singleBlock,
+                  _TestGameViewModel.singleBlock,
+                  _TestGameViewModel.singleBlock,
+                ],
+                levelLinesCleared: 100,
+                mode: GameMode.classic,
+                status: GameStatus.playing,
+              ),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final vm = container.read(gameProvider.notifier);
+      expect(vm.placeBlock(0, 7, 7), isTrue);
+      final state = container.read(gameProvider);
+
+      expect(state.status, GameStatus.playing);
+      expect(state.levelLinesCleared, 0);
+      expect(state.mode, GameMode.classic);
+      expect(prefs.getInt(Keys.classicBestScore), 11);
+      expect(prefs.getInt(Keys.bestScore), isNull);
+      expect(prefs.getInt(Keys.unlockedLevel), isNull);
+      expect(prefs.getBool(Keys.campaignComplete), isNull);
+    },
+  );
+
+  test(
+    'classic starts independently of the Adventure campaign and score',
+    () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(Keys.bestScore, 900);
+      await prefs.setInt(Keys.classicBestScore, 120);
+      await prefs.setInt(Keys.unlockedLevel, 8);
+      await prefs.setBool(Keys.campaignComplete, true);
+      final container = ProviderContainer(
+        overrides: [prefsProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      container.read(gameProvider.notifier).start(mode: GameMode.classic);
+      final state = container.read(gameProvider);
+
+      expect(state.mode, GameMode.classic);
+      expect(state.status, GameStatus.playing);
+      expect(state.bestScore, 120);
+      expect(state.level, 1);
+    },
+  );
 
   test(
     'completing level 30 finishes campaign without unlocking level 31',
@@ -497,9 +737,11 @@ void main() {
 Future<void> _pumpGame(
   WidgetTester tester,
   Board board, {
+  Size screenSize = const Size(390, 844),
+  GameMode mode = GameMode.adventure,
   GameState? initialState,
 }) async {
-  tester.view.physicalSize = const Size(390, 844);
+  tester.view.physicalSize = screenSize;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   final prefs = await SharedPreferences.getInstance();
@@ -513,14 +755,19 @@ Future<void> _pumpGame(
       ],
       child: MaterialApp(
         theme: BlockQuestApp.appTheme,
-        home: const GameScreen(),
+        home: GameScreen(mode: mode),
       ),
     ),
   );
   await tester.pump();
 }
 
-Future<void> _dropAtCell(WidgetTester tester, int x, int y) async {
+Future<void> _dropAtCell(
+  WidgetTester tester,
+  int x,
+  int y, {
+  double inset = .1625,
+}) async {
   final board = find.byWidgetPredicate(
     (widget) => widget is Container && widget.key is GlobalKey,
   );
@@ -531,8 +778,8 @@ Future<void> _dropAtCell(WidgetTester tester, int x, int y) async {
   final destination =
       boardRect.topLeft +
       Offset(
-        (x + .1) * boardRect.width / 8 + boardRect.width / 16,
-        (y + .1) * boardRect.height / 8 + boardRect.height / 8 + 48,
+        (x + inset) * boardRect.width / 8 + boardRect.width / 16,
+        (y + inset) * boardRect.height / 8 + boardRect.height / 16,
       );
   final start = tester.getCenter(draggable.first);
   await tester.dragFrom(start, destination - start);
@@ -578,7 +825,7 @@ class _TestGameViewModel extends GameViewModel {
       );
 
   @override
-  void start() {}
+  void start({GameMode mode = GameMode.adventure}) {}
 }
 
 class _ConfiguredGameViewModel extends GameViewModel {

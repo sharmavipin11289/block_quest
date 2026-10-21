@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme/app_colors.dart';
 import '../data/settings_provider.dart';
+import 'legal_document_screen.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -46,8 +47,32 @@ class SettingsScreen extends ConsumerWidget {
                     'Drag blocks onto the board. Fill a full row or column to clear it. Chain clears for combos!',
                   ),
                 ),
-                const ListTile(title: Text('Privacy')),
-                const ListTile(title: Text('Terms')),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('Privacy Policy'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const LegalDocumentScreen(
+                        document: LegalDocument.privacy,
+                      ),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: const Text('Terms and Conditions'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                      builder: (_) => const LegalDocumentScreen(
+                        document: LegalDocument.terms,
+                      ),
+                    ),
+                  ),
+                ),
                 const Padding(
                   padding: EdgeInsets.all(24),
                   child: Center(

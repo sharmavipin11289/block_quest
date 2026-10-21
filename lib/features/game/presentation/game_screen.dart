@@ -15,7 +15,10 @@ import 'game_sound_service.dart';
 import 'line_clear_feedback.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
-  const GameScreen({super.key});
+  const GameScreen({super.key, this.mode = GameMode.adventure});
+
+  final GameMode mode;
+
   @override
   ConsumerState<GameScreen> createState() => _GameScreenState();
 }
@@ -83,7 +86,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
       begin: 0.0,
       end: -18.0,
     ).animate(CurvedAnimation(parent: _feedbackMotion, curve: Curves.easeIn));
-    Future.microtask(() => ref.read(gameProvider.notifier).start());
+    Future.microtask(
+      () => ref.read(gameProvider.notifier).start(mode: widget.mode),
+    );
   }
 
   @override
@@ -97,11 +102,22 @@ class _GameScreenState extends ConsumerState<GameScreen>
     super.dispose();
   }
 
-  (int, int)? _toCell(Offset global) {
+  (int, int)? _toCell(Offset global, int boardSize) {
     final box = _boardKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null) return null;
+    if (box == null || boardSize == 0) return null;
     final p = box.globalToLocal(global);
-    return ((p.dx / _cell).round(), (p.dy / _cell).round());
+    if (p.dx < 0 ||
+        p.dy < 0 ||
+        p.dx >= box.size.width ||
+        p.dy >= box.size.height) {
+      return null;
+    }
+    final cellWidth = box.size.width / boardSize;
+    final cellHeight = box.size.height / boardSize;
+    return (
+      (p.dx / cellWidth).round().clamp(0, boardSize - 1),
+      (p.dy / cellHeight).round().clamp(0, boardSize - 1),
+    );
   }
 
   @override
@@ -125,21 +141,29 @@ class _GameScreenState extends ConsumerState<GameScreen>
           child: LayoutBuilder(
             builder: (context, constraints) {
               final compact = constraints.maxHeight < 600;
+              final wideLayout =
+                  constraints.maxWidth > constraints.maxHeight &&
+                  constraints.maxWidth >= 700;
               final horizontalPadding = constraints.maxWidth < 420
                   ? 16.0
                   : 32.0;
               final maxBoardWidth = constraints.maxWidth >= 900 ? 560.0 : 480.0;
-              final widthSide = min(
-                maxBoardWidth,
-                constraints.maxWidth - horizontalPadding,
-              );
-              final heightSide = max(
-                0.0,
-                constraints.maxHeight - (compact ? 260 : 372),
-              );
+              final widthSide = wideLayout
+                  ? min(maxBoardWidth, constraints.maxWidth * .56)
+                  : min(
+                      maxBoardWidth,
+                      constraints.maxWidth - horizontalPadding,
+                    );
+              final heightSide = wideLayout
+                  ? max(0.0, constraints.maxHeight - 32)
+                  : max(0.0, constraints.maxHeight - (compact ? 260 : 372));
               final side = min(widthSide, heightSide);
               final trayExtent = min(110.0, max(58.0, side * .27));
-              final dragPadding = compact ? 20.0 : 56.0;
+              final dragPadding = wideLayout
+                  ? 8.0
+                  : compact
+                  ? 20.0
+                  : 56.0;
               _cell = side / g.board.size;
 
               final ghostBlock = _ghost == null
@@ -151,319 +175,269 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
               return Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
+                  constraints: BoxConstraints(
+                    maxWidth: wideLayout ? 1100 : 760,
+                  ),
                   child: Stack(
                     children: [
-                      Column(
-                        children: [
-                          Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              compact ? 12 : 20,
-                              compact ? 0 : 8,
-                              compact ? 12 : 20,
-                              0,
-                            ),
-                            child: Row(
+                      wideLayout
+                          ? Row(
                               children: [
-                                const Icon(
-                                  Icons.emoji_events_rounded,
-                                  color: AppColors.accent,
-                                  size: 28,
-                                ),
-                                const SizedBox(width: 6),
-                                _OutlinedArcadeText(
-                                  '${g.bestScore}',
-                                  style: const TextStyle(
-                                    color: AppColors.accent,
-                                    fontSize: 27,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                  outlineColor: const Color(0xFF123B8D),
-                                  outlineWidth: 2.5,
-                                ),
-                                const Spacer(),
-                                IconButton(
-                                  tooltip: 'Settings',
-                                  visualDensity: compact
-                                      ? VisualDensity.compact
-                                      : VisualDensity.standard,
-                                  icon: const Icon(
-                                    Icons.settings_rounded,
-                                    color: AppColors.filled,
-                                    size: 30,
-                                  ),
-                                  onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const SettingsScreen(),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Padding(
-                            padding: EdgeInsets.symmetric(
-                              vertical: compact ? 0 : 4,
-                            ),
-                            child: Column(
-                              children: [
-                                _OutlinedArcadeText(
-                                  '${g.score}',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: compact ? 52 : 66,
-                                    fontWeight: FontWeight.w900,
-                                    height: 1,
-                                    shadows: [
-                                      Shadow(
-                                        color: AppColors.gradientTop.withValues(
-                                          alpha: .5,
+                                Expanded(
+                                  flex: 6,
+                                  child: Column(
+                                    children: [
+                                      Padding(
+                                        padding: EdgeInsets.fromLTRB(
+                                          compact ? 12 : 20,
+                                          compact ? 0 : 8,
+                                          compact ? 12 : 20,
+                                          0,
                                         ),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 3),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.emoji_events_rounded,
+                                              color: AppColors.accent,
+                                              size: 28,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            _OutlinedArcadeText(
+                                              '${g.bestScore}',
+                                              style: const TextStyle(
+                                                color: AppColors.accent,
+                                                fontSize: 27,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                              outlineColor: const Color(
+                                                0xFF123B8D,
+                                              ),
+                                              outlineWidth: 2.5,
+                                            ),
+                                            const Spacer(),
+                                            IconButton(
+                                              tooltip: 'Settings',
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              icon: const Icon(
+                                                Icons.settings_rounded,
+                                                color: AppColors.filled,
+                                                size: 30,
+                                              ),
+                                              onPressed: () => Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const SettingsScreen(),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
+                                      Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: compact ? 0 : 4,
+                                        ),
+                                        child: Column(
+                                          children: [
+                                            _OutlinedArcadeText(
+                                              '${g.score}',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: compact ? 52 : 66,
+                                                fontWeight: FontWeight.w900,
+                                                height: 1,
+                                                shadows: [
+                                                  Shadow(
+                                                    color: AppColors.gradientTop
+                                                        .withValues(alpha: .5),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 3),
+                                                  ),
+                                                ],
+                                              ),
+                                              outlineColor: const Color(
+                                                0xFF123B8D,
+                                              ),
+                                              outlineWidth: 3.5,
+                                            ),
+                                            const SizedBox(height: 2),
+                                            const Text(
+                                              'SCORE',
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                letterSpacing: 3,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                        child: _progressHeader(
+                                          g,
+                                          height: compact ? 24 : 28,
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceEvenly,
+                                        children: [
+                                          for (var i = 0; i < 3; i++)
+                                            _slot(
+                                              g.availableBlocks[i],
+                                              i,
+                                              trayExtent,
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
                                     ],
                                   ),
-                                  outlineColor: const Color(0xFF123B8D),
-                                  outlineWidth: 3.5,
                                 ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'SCORE',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 3,
-                                  ),
+                                const SizedBox(width: 8),
+                                _buildBoard(
+                                  g,
+                                  vm,
+                                  side,
+                                  dragPadding,
+                                  ghostBlock,
+                                  ghostValid,
                                 ),
                               ],
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: SizedBox(
-                              height: compact ? 24 : 28,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-
-                                  children: [
-                                    Text(
-                                      'LEVEL ${g.level}/${GameState.maxLevel}',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
+                            )
+                          : Column(
+                              children: [
+                                Padding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    compact ? 12 : 20,
+                                    compact ? 0 : 8,
+                                    compact ? 12 : 20,
+                                    0,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.emoji_events_rounded,
+                                        color: AppColors.accent,
+                                        size: 28,
                                       ),
-                                    ),
-                                    if (g.combo > 1)
-                                      Text(
-                                        'COMBO ×${g.combo}',
+                                      const SizedBox(width: 6),
+                                      _OutlinedArcadeText(
+                                        '${g.bestScore}',
                                         style: const TextStyle(
                                           color: AppColors.accent,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
+                                          fontSize: 27,
+                                          fontWeight: FontWeight.w900,
                                         ),
+                                        outlineColor: const Color(0xFF123B8D),
+                                        outlineWidth: 2.5,
                                       ),
-                                    Text(
-                                      'LINES ${g.levelLinesCleared}/${g.linesRequired}',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          DragTarget<int>(
-                            onWillAcceptWithDetails: (_) => true,
-                            onLeave: (_) => setState(() => _ghost = null),
-                            onMove: (d) {
-                              final c = _toCell(d.offset);
-                              if (c != null) {
-                                setState(
-                                  () => _ghost = (x: c.$1, y: c.$2, i: d.data),
-                                );
-                              }
-                            },
-                            onAcceptWithDetails: (d) {
-                              final c = _toCell(d.offset);
-                              final block = g.availableBlocks[d.data];
-                              final placement =
-                                  c != null &&
-                                      block != null &&
-                                      vm.engine.canPlace(
-                                        g.board,
-                                        block,
-                                        c.$1,
-                                        c.$2,
-                                      )
-                                  ? vm.engine.placeBlock(
-                                      g.board,
-                                      block,
-                                      c.$1,
-                                      c.$2,
-                                    )
-                                  : null;
-                              final canPlace = placement != null;
-                              final rows = placement == null
-                                  ? <int>[]
-                                  : vm.engine.findCompletedRows(placement);
-                              final columns = placement == null
-                                  ? <int>[]
-                                  : vm.engine.findCompletedColumns(placement);
-                              final clearEffect =
-                                  placement == null ||
-                                      (rows.isEmpty && columns.isEmpty)
-                                  ? null
-                                  : _makeClearEffect(
-                                      placement,
-                                      rows,
-                                      columns,
-                                      block!,
-                                      c!.$1,
-                                      c.$2,
-                                    );
-                              final ok =
-                                  canPlace &&
-                                  vm.placeBlock(d.data, c!.$1, c.$2);
-                              if (ok && ref.read(settingsProvider).vibration) {
-                                HapticFeedback.lightImpact();
-                              }
-                              final soundEnabled = ref
-                                  .read(settingsProvider)
-                                  .sound;
-                              if (ok) {
-                                final next = ref.read(gameProvider);
-                                final linesCleared =
-                                    next.linesCleared - g.linesCleared;
-                                if (linesCleared > 0) {
-                                  _showLineClearFeedback(
-                                    linesCleared,
-                                    next.combo,
-                                  );
-                                }
-                                final sound =
-                                    next.status == GameStatus.levelComplete ||
-                                        next.status ==
-                                            GameStatus.campaignComplete
-                                    ? GameSound.levelComplete
-                                    : next.status == GameStatus.gameOver
-                                    ? GameSound.gameOver
-                                    : linesCleared >= 3
-                                    ? GameSound.multipleLinesCleared
-                                    : linesCleared == 2
-                                    ? GameSound.doubleLineCleared
-                                    : linesCleared == 1 && next.combo > 1
-                                    ? GameSound.combo
-                                    : linesCleared == 1
-                                    ? GameSound.lineCleared
-                                    : GameSound.blockPlaced;
-                                unawaited(
-                                  _soundService.play(
-                                    sound,
-                                    enabled: soundEnabled,
-                                  ),
-                                );
-                              } else {
-                                unawaited(
-                                  _soundService.play(
-                                    GameSound.invalidDrop,
-                                    enabled: soundEnabled,
-                                  ),
-                                );
-                              }
-                              if (ok && block != null) {
-                                setState(() {
-                                  for (final point in block.cells) {
-                                    _cellColors[(c.$2 + point.y) *
-                                                g.board.size +
-                                            c.$1 +
-                                            point.x] =
-                                        AppColors.blocks[block.colorIndex];
-                                  }
-                                  if (clearEffect != null) {
-                                    for (var y = 0; y < g.board.size; y++) {
-                                      for (var x = 0; x < g.board.size; x++) {
-                                        if (rows.contains(y) ||
-                                            columns.contains(x)) {
-                                          _cellColors.remove(
-                                            y * g.board.size + x,
-                                          );
-                                        }
-                                      }
-                                    }
-                                    _startClearEffect(clearEffect);
-                                  }
-                                });
-                              }
-                              setState(() => _ghost = null);
-                            },
-                            builder: (_, _, _) => Padding(
-                              padding: EdgeInsets.only(bottom: dragPadding),
-                              child: Container(
-                                key: _boardKey,
-                                width: side,
-                                height: side,
-                                decoration: BoxDecoration(
-                                  color: AppColors.panel,
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: .08),
-                                  ),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(18),
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      CustomPaint(
-                                        painter: _BoardPainter(
-                                          g.board,
-                                          ghostBlock,
-                                          _ghost?.x ?? 0,
-                                          _ghost?.y ?? 0,
-                                          ghostValid,
-                                          _cellColors,
-                                          _gelMotion,
+                                      const Spacer(),
+                                      IconButton(
+                                        tooltip: 'Settings',
+                                        visualDensity: compact
+                                            ? VisualDensity.compact
+                                            : VisualDensity.standard,
+                                        icon: const Icon(
+                                          Icons.settings_rounded,
+                                          color: AppColors.filled,
+                                          size: 30,
                                         ),
-                                      ),
-                                      for (final effect in _clearEffects)
-                                        CustomPaint(
-                                          painter: _ClearPainter(
-                                            effect.cells,
-                                            g.board.size,
-                                            effect.controller,
+                                        onPressed: () => Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const SettingsScreen(),
                                           ),
                                         ),
+                                      ),
                                     ],
                                   ),
                                 ),
-                              ),
+                                Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    vertical: compact ? 0 : 4,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      _OutlinedArcadeText(
+                                        '${g.score}',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: compact ? 52 : 66,
+                                          fontWeight: FontWeight.w900,
+                                          height: 1,
+                                          shadows: [
+                                            Shadow(
+                                              color: AppColors.gradientTop
+                                                  .withValues(alpha: .5),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 3),
+                                            ),
+                                          ],
+                                        ),
+                                        outlineColor: const Color(0xFF123B8D),
+                                        outlineWidth: 3.5,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      const Text(
+                                        'SCORE',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: _progressHeader(
+                                    g,
+                                    height: compact ? 24 : 28,
+                                  ),
+                                ),
+                                _buildBoard(
+                                  g,
+                                  vm,
+                                  side,
+                                  dragPadding,
+                                  ghostBlock,
+                                  ghostValid,
+                                ),
+                                const Spacer(),
+                                Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    for (var i = 0; i < 3; i++)
+                                      _slot(
+                                        g.availableBlocks[i],
+                                        i,
+                                        trayExtent,
+                                      ),
+                                  ],
+                                ),
+                                SizedBox(height: compact ? 8 : 24),
+                              ],
                             ),
-                          ),
-                          const Spacer(),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              for (var i = 0; i < 3; i++)
-                                _slot(g.availableBlocks[i], i, trayExtent),
-                            ],
-                          ),
-                          SizedBox(height: compact ? 8 : 24),
-                        ],
-                      ),
                       if (g.status == GameStatus.gameOver) _gameOver(g, vm),
-                      if (g.status == GameStatus.levelComplete)
+                      if (widget.mode == GameMode.adventure &&
+                          g.status == GameStatus.levelComplete)
                         _levelComplete(g, vm),
-                      if (g.status == GameStatus.campaignComplete)
+                      if (widget.mode == GameMode.adventure &&
+                          g.status == GameStatus.campaignComplete)
                         _campaignComplete(g, vm),
                       if (_lineClearMessage case final lineMessage?)
                         Positioned.fill(
@@ -535,6 +509,202 @@ class _GameScreenState extends ConsumerState<GameScreen>
     );
   }
 
+  Widget _buildBoard(
+    GameState g,
+    GameViewModel vm,
+    double side,
+    double dragPadding,
+    Block? ghostBlock,
+    bool ghostValid,
+  ) => DragTarget<int>(
+    onWillAcceptWithDetails: (_) => true,
+    onLeave: (_) => setState(() => _ghost = null),
+    onMove: (d) {
+      final c = _toCell(d.offset, g.board.size);
+      if (c != null) {
+        setState(() => _ghost = (x: c.$1, y: c.$2, i: d.data));
+      }
+    },
+    onAcceptWithDetails: (d) {
+      final c = _toCell(d.offset, g.board.size);
+      final block = g.availableBlocks[d.data];
+      final placement =
+          c != null &&
+              block != null &&
+              vm.engine.canPlace(g.board, block, c.$1, c.$2)
+          ? vm.engine.placeBlock(g.board, block, c.$1, c.$2)
+          : null;
+      final canPlace = placement != null;
+      final rows = placement == null
+          ? <int>[]
+          : vm.engine.findCompletedRows(placement);
+      final columns = placement == null
+          ? <int>[]
+          : vm.engine.findCompletedColumns(placement);
+      final clearEffect = placement == null || (rows.isEmpty && columns.isEmpty)
+          ? null
+          : _makeClearEffect(placement, rows, columns, block!, c!.$1, c.$2);
+      final ok = canPlace && vm.placeBlock(d.data, c!.$1, c.$2);
+      if (ok && ref.read(settingsProvider).vibration) {
+        HapticFeedback.lightImpact();
+      }
+      final soundEnabled = ref.read(settingsProvider).sound;
+      if (ok) {
+        final next = ref.read(gameProvider);
+        final linesCleared = next.linesCleared - g.linesCleared;
+        if (linesCleared > 0) {
+          _showLineClearFeedback(linesCleared, next.combo);
+        }
+        final sound =
+            next.status == GameStatus.levelComplete ||
+                next.status == GameStatus.campaignComplete
+            ? GameSound.levelComplete
+            : next.status == GameStatus.gameOver
+            ? GameSound.gameOver
+            : linesCleared >= 3
+            ? GameSound.multipleLinesCleared
+            : linesCleared == 2
+            ? GameSound.doubleLineCleared
+            : linesCleared == 1 && next.combo > 1
+            ? GameSound.combo
+            : linesCleared == 1
+            ? GameSound.lineCleared
+            : GameSound.blockPlaced;
+        unawaited(_soundService.play(sound, enabled: soundEnabled));
+      } else {
+        unawaited(
+          _soundService.play(GameSound.invalidDrop, enabled: soundEnabled),
+        );
+      }
+      if (ok && block != null) {
+        setState(() {
+          for (final point in block.cells) {
+            _cellColors[(c.$2 + point.y) * g.board.size + c.$1 + point.x] =
+                AppColors.blocks[block.colorIndex];
+          }
+          if (clearEffect != null) {
+            for (var y = 0; y < g.board.size; y++) {
+              for (var x = 0; x < g.board.size; x++) {
+                if (rows.contains(y) || columns.contains(x)) {
+                  _cellColors.remove(y * g.board.size + x);
+                }
+              }
+            }
+            _startClearEffect(clearEffect);
+          }
+        });
+      }
+      setState(() => _ghost = null);
+    },
+    builder: (_, _, _) => Padding(
+      padding: EdgeInsets.only(bottom: dragPadding),
+      child: Container(
+        key: _boardKey,
+        width: side,
+        height: side,
+        decoration: BoxDecoration(
+          color: AppColors.panel,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: .08)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(
+                painter: _BoardPainter(
+                  g.board,
+                  ghostBlock,
+                  _ghost?.x ?? 0,
+                  _ghost?.y ?? 0,
+                  ghostValid,
+                  _cellColors,
+                  _gelMotion,
+                ),
+              ),
+              for (final effect in _clearEffects)
+                CustomPaint(
+                  painter: _ClearPainter(
+                    effect.cells,
+                    g.board.size,
+                    effect.controller,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _progressHeader(GameState g, {required double height}) => SizedBox(
+    height: height,
+    width: double.infinity,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        if (widget.mode == GameMode.adventure)
+          Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: EdgeInsets.only(right: g.combo > 1 ? 64 : 0),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'LEVEL ${g.level}/${GameState.maxLevel}',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: EdgeInsets.only(left: g.combo > 1 ? 64 : 0),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'LINES ${g.levelLinesCleared}/${g.linesRequired}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        if (g.combo > 1)
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'COMBO ×${g.combo}',
+              style: const TextStyle(
+                color: AppColors.accent,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+
   Widget _slot(Block? b, int i, double extent) {
     final small = b == null
         ? _cell * .55
@@ -554,7 +724,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
                   ),
                 ),
                 dragAnchorStrategy: (d, ctx, pos) =>
-                    Offset(b.width * _cell / 2, b.height * _cell + 48),
+                    Offset(b.width * _cell / 2, b.height * _cell / 2),
                 feedback: Material(
                   color: Colors.transparent,
                   child: BlockView(b, _cell, _gelMotion),
@@ -624,7 +794,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
   void _restart(GameViewModel vm) {
     _clearVisuals();
-    vm.start();
+    vm.start(mode: widget.mode);
   }
 
   void _clearVisuals() {
@@ -849,75 +1019,90 @@ class _CelebrationOverlayState extends State<_CelebrationOverlay>
       ),
     ),
     child: LayoutBuilder(
-      builder: (context, constraints) => Stack(
-        fit: StackFit.expand,
-        children: [
-          AnimatedBuilder(
-            animation: _controller,
-            builder: (context, child) =>
-                CustomPaint(painter: _ConfettiPainter(_controller.value)),
-          ),
-          Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, child) {
-                      final bounce =
-                          sin(_controller.value * pi * 4) *
-                          (1 - _controller.value) *
-                          .12;
-                      return Transform.scale(
-                        scale: 1 + bounce,
-                        child: const Text('🎉', style: TextStyle(fontSize: 68)),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.accent,
-                      fontSize: 42,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2,
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 520;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) =>
+                  CustomPaint(painter: _ConfettiPainter(_controller.value)),
+            ),
+            Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(compact ? 16 : 24),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: max(
+                      0,
+                      constraints.maxHeight - (compact ? 32 : 48),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    widget.subtitle,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 21,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 28),
-                  FilledButton(
-                    onPressed: widget.onPressed,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 28,
-                        vertical: 10,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedBuilder(
+                        animation: _controller,
+                        builder: (context, child) {
+                          final bounce =
+                              sin(_controller.value * pi * 4) *
+                              (1 - _controller.value) *
+                              .12;
+                          return Transform.scale(
+                            scale: 1 + bounce,
+                            child: Text(
+                              '🎉',
+                              style: TextStyle(fontSize: compact ? 48 : 68),
+                            ),
+                          );
+                        },
                       ),
-                      child: Text(widget.buttonLabel),
-                    ),
+                      SizedBox(height: compact ? 4 : 8),
+                      Text(
+                        widget.title,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AppColors.accent,
+                          fontSize: compact ? 34 : 42,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      SizedBox(height: compact ? 8 : 12),
+                      Text(
+                        widget.subtitle,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: compact ? 18 : 21,
+                          height: 1.5,
+                        ),
+                      ),
+                      SizedBox(height: compact ? 16 : 28),
+                      FilledButton(
+                        onPressed: widget.onPressed,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 28,
+                            vertical: 10,
+                          ),
+                          child: Text(widget.buttonLabel),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: widget.onHome,
+                        child: const Text('HOME'),
+                      ),
+                    ],
                   ),
-                  TextButton(
-                    onPressed: widget.onHome,
-                    child: const Text('HOME'),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     ),
   );
 }

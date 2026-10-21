@@ -16,6 +16,8 @@ enum GameStatus {
   campaignComplete,
 }
 
+enum GameMode { adventure, classic }
+
 class GameState {
   static const maxLevel = 30;
 
@@ -23,6 +25,7 @@ class GameState {
   final List<Block?> availableBlocks;
   final int score, bestScore, combo, linesCleared, level, levelLinesCleared;
   final GameStatus status;
+  final GameMode mode;
   final bool newBest;
   int get linesRequired => level + 2;
 
@@ -36,6 +39,7 @@ class GameState {
     this.level = 1,
     this.levelLinesCleared = 0,
     this.status = GameStatus.idle,
+    this.mode = GameMode.adventure,
     this.newBest = false,
   });
 }
@@ -54,22 +58,29 @@ class GameViewModel extends Notifier<GameState> {
 
   GameEngine get engine => _engine;
 
+  String _bestScoreKey(GameMode mode) => switch (mode) {
+    GameMode.adventure => Keys.bestScore,
+    GameMode.classic => Keys.classicBestScore,
+  };
+
   int get _savedLevel =>
       (ref.read(prefsProvider).getInt(Keys.unlockedLevel) ?? 1)
           .clamp(1, GameState.maxLevel)
           .toInt();
 
-  void start() {
+  void start({GameMode mode = GameMode.adventure}) {
     final board = Board.empty();
     final prefs = ref.read(prefsProvider);
     prefs.setInt(Keys.gamesPlayed, (prefs.getInt(Keys.gamesPlayed) ?? 0) + 1);
-    final level = _savedLevel;
-    if (prefs.getBool(Keys.campaignComplete) ?? false) {
+    final level = mode == GameMode.adventure ? _savedLevel : 1;
+    if (mode == GameMode.adventure &&
+        (prefs.getBool(Keys.campaignComplete) ?? false)) {
       state = GameState(
         board: board,
         availableBlocks: const [null, null, null],
-        bestScore: state.bestScore,
+        bestScore: prefs.getInt(_bestScoreKey(mode)) ?? 0,
         level: GameState.maxLevel,
+        mode: mode,
         status: GameStatus.campaignComplete,
       );
       return;
@@ -77,8 +88,9 @@ class GameViewModel extends Notifier<GameState> {
     state = GameState(
       board: board,
       availableBlocks: _engine.generateBlocks(board, _rng),
-      bestScore: state.bestScore,
+      bestScore: prefs.getInt(_bestScoreKey(mode)) ?? 0,
       level: level,
+      mode: mode,
       status: GameStatus.playing,
     );
   }
@@ -95,6 +107,7 @@ class GameViewModel extends Notifier<GameState> {
       score: s.score,
       bestScore: s.bestScore,
       level: nextLevel,
+      mode: s.mode,
       status: GameStatus.playing,
     );
   }
@@ -109,6 +122,7 @@ class GameViewModel extends Notifier<GameState> {
       board: board,
       availableBlocks: _engine.generateBlocks(board, _rng),
       bestScore: state.bestScore,
+      mode: GameMode.adventure,
       status: GameStatus.playing,
     );
   }
@@ -126,11 +140,14 @@ class GameViewModel extends Notifier<GameState> {
     final score =
         s.score +
         _engine.calculateScore(block.cells.length, result.lines, combo);
-    final levelLinesCleared = s.levelLinesCleared + result.lines;
+    final levelLinesCleared = s.mode == GameMode.adventure
+        ? s.levelLinesCleared + result.lines
+        : 0;
 
     var blocks = [...s.availableBlocks]..[index] = null;
-    if (blocks.every((b) => b == null))
+    if (blocks.every((b) => b == null)) {
       blocks = _engine.generateBlocks(result.board, _rng);
+    }
     final over = !_engine.hasAvailableMove(
       result.board,
       blocks.whereType<Block>(),
@@ -139,15 +156,21 @@ class GameViewModel extends Notifier<GameState> {
     final newBest = s.newBest || (score > s.bestScore && s.bestScore > 0);
     final best = max(score, s.bestScore);
     final prefs = ref.read(prefsProvider);
-    if (best > s.bestScore) prefs.setInt(Keys.bestScore, best);
+    if (best > s.bestScore) {
+      prefs.setInt(_bestScoreKey(s.mode), best);
+    }
     if (result.lines > 0) {
       prefs.setInt(
         Keys.totalLines,
         (prefs.getInt(Keys.totalLines) ?? 0) + result.lines,
       );
     }
-    final levelComplete = levelLinesCleared >= s.linesRequired;
-    final campaignComplete = levelComplete && s.level == GameState.maxLevel;
+    final levelComplete =
+        s.mode == GameMode.adventure && levelLinesCleared >= s.linesRequired;
+    final campaignComplete =
+        s.mode == GameMode.adventure &&
+        levelComplete &&
+        s.level == GameState.maxLevel;
     if (levelComplete && !campaignComplete) {
       prefs.setInt(Keys.unlockedLevel, max(_savedLevel, s.level + 1));
     }
@@ -164,6 +187,7 @@ class GameViewModel extends Notifier<GameState> {
       linesCleared: s.linesCleared + result.lines,
       level: s.level,
       levelLinesCleared: levelLinesCleared,
+      mode: s.mode,
       status: campaignComplete
           ? GameStatus.campaignComplete
           : levelComplete
