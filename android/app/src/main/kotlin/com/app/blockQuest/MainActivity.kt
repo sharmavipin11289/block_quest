@@ -1,4 +1,4 @@
-package com.example.block_quest
+package com.app.blockQuest
 
 import io.flutter.embedding.android.FlutterActivity
 
