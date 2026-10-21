@@ -11,6 +11,7 @@ import 'package:block_quest/app/theme/app_colors.dart';
 import 'package:block_quest/features/game/domain/block.dart';
 import 'package:block_quest/features/game/domain/board.dart';
 import 'package:block_quest/features/game/presentation/game_screen.dart';
+import 'package:block_quest/features/game/presentation/interstitial_ad_service.dart';
 import 'package:block_quest/features/game/presentation/game_viewmodel.dart';
 import 'package:block_quest/features/game/presentation/line_clear_feedback.dart';
 import 'package:block_quest/features/home/presentation/home_screen.dart';
@@ -564,6 +565,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('retry waits for the interstitial completion before restarting', (
+    tester,
+  ) async {
+    final adService = _TestInterstitialAdService();
+    await _pumpGame(
+      tester,
+      Board.empty(),
+      adService: adService,
+      initialState: GameState(
+        board: Board.empty(),
+        availableBlocks: const [
+          _TestGameViewModel.singleBlock,
+          _TestGameViewModel.singleBlock,
+          _TestGameViewModel.singleBlock,
+        ],
+        status: GameStatus.gameOver,
+      ),
+    );
+
+    final viewModel = ProviderScope.containerOf(
+      tester.element(find.byType(GameScreen)),
+    ).read(gameProvider.notifier) as _TestGameViewModel;
+    expect(viewModel.startCount, 1);
+
+    await tester.tap(find.text('PLAY AGAIN'));
+    await tester.pump();
+
+    expect(adService.showCount, 1);
+    expect(adService.completionCount, 1);
+    expect(viewModel.startCount, 2);
+  });
+
   testWidgets('classic shows retry without adventure level progress', (
     tester,
   ) async {
@@ -739,6 +772,7 @@ Future<void> _pumpGame(
   Board board, {
   Size screenSize = const Size(390, 844),
   GameMode mode = GameMode.adventure,
+  _TestInterstitialAdService? adService,
   GameState? initialState,
 }) async {
   tester.view.physicalSize = screenSize;
@@ -749,6 +783,9 @@ Future<void> _pumpGame(
     ProviderScope(
       overrides: [
         prefsProvider.overrideWithValue(prefs),
+        interstitialAdServiceProvider.overrideWithValue(
+          adService ?? _TestInterstitialAdService(),
+        ),
         gameProvider.overrideWith(
           () => _TestGameViewModel(board, initialState: initialState),
         ),
@@ -813,6 +850,7 @@ class _TestGameViewModel extends GameViewModel {
 
   final Board board;
   final GameState? initialState;
+  var startCount = 0;
   static const singleBlock = Block('single', [Point<int>(0, 0)], 0);
 
   @override
@@ -825,7 +863,24 @@ class _TestGameViewModel extends GameViewModel {
       );
 
   @override
-  void start({GameMode mode = GameMode.adventure}) {}
+  void start({GameMode mode = GameMode.adventure}) {
+    startCount++;
+  }
+}
+
+class _TestInterstitialAdService implements InterstitialAdService {
+  var showCount = 0;
+  var completionCount = 0;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  void showBeforeRetry(VoidCallback onComplete) {
+    showCount++;
+    onComplete();
+    completionCount++;
+  }
 }
 
 class _ConfiguredGameViewModel extends GameViewModel {

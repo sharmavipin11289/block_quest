@@ -12,6 +12,7 @@ import '../domain/block.dart';
 import '../domain/board.dart';
 import 'game_viewmodel.dart';
 import 'game_sound_service.dart';
+import 'interstitial_ad_service.dart';
 import 'line_clear_feedback.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
@@ -38,6 +39,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
   final List<_ClearEffect> _clearEffects = [];
   String? _lineClearMessage;
   String? _comboMessage;
+  bool _retryInProgress = false;
 
   @override
   void initState() {
@@ -793,8 +795,14 @@ class _GameScreenState extends ConsumerState<GameScreen>
   }
 
   void _restart(GameViewModel vm) {
-    _clearVisuals();
-    vm.start(mode: widget.mode);
+    if (_retryInProgress) return;
+    setState(() => _retryInProgress = true);
+    ref.read(interstitialAdServiceProvider).showBeforeRetry(() {
+      if (!mounted) return;
+      _clearVisuals();
+      vm.start(mode: widget.mode);
+      setState(() => _retryInProgress = false);
+    });
   }
 
   void _clearVisuals() {
@@ -938,7 +946,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
                     width: min(360, constraints.maxWidth - 48),
                     height: 64,
                     child: FilledButton.icon(
-                      onPressed: () => _restart(vm),
+                      onPressed: _retryInProgress ? null : () => _restart(vm),
                       icon: const Icon(Icons.play_arrow_rounded, size: 32),
                       label: const Text(
                         'PLAY AGAIN',

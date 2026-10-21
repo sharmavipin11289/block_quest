@@ -38,6 +38,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   audioplayers: ^6.8.1
   flutter_widget_from_html_core: ^0.17.4
+  google_mobile_ads: ^9.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
