@@ -540,6 +540,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('shows an interstitial before advancing to the next level', (
+    tester,
+  ) async {
+    final adService = _TestInterstitialAdService(completeImmediately: false);
+    await _pumpGame(
+      tester,
+      Board.empty(),
+      adService: adService,
+      initialState: GameState(
+        board: Board.empty(),
+        availableBlocks: const [
+          _TestGameViewModel.singleBlock,
+          _TestGameViewModel.singleBlock,
+          _TestGameViewModel.singleBlock,
+        ],
+        level: 1,
+        levelLinesCleared: 3,
+        status: GameStatus.levelComplete,
+      ),
+    );
+
+    await tester.tap(find.text('LEVEL 2'));
+    await tester.pump();
+
+    expect(adService.showCount, 1);
+    expect(
+      ProviderScope.containerOf(
+        tester.element(find.byType(GameScreen)),
+      ).read(gameProvider).level,
+      1,
+    );
+
+    adService.complete();
+    await tester.pump();
+
+    expect(
+      ProviderScope.containerOf(
+        tester.element(find.byType(GameScreen)),
+      ).read(gameProvider).level,
+      2,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows the score summary when no moves remain', (tester) async {
     await _pumpGame(
       tester,
@@ -869,15 +913,27 @@ class _TestGameViewModel extends GameViewModel {
 }
 
 class _TestInterstitialAdService implements InterstitialAdService {
+  _TestInterstitialAdService({this.completeImmediately = true});
+
+  final bool completeImmediately;
   var showCount = 0;
   var completionCount = 0;
+  VoidCallback? _onComplete;
 
   @override
   Future<void> initialize() async {}
 
   @override
-  void showBeforeRetry(VoidCallback onComplete) {
+  void showInterstitial(VoidCallback onComplete) {
     showCount++;
+    _onComplete = onComplete;
+    if (completeImmediately) complete();
+  }
+
+  void complete() {
+    final onComplete = _onComplete;
+    if (onComplete == null) return;
+    _onComplete = null;
     onComplete();
     completionCount++;
   }

@@ -9,7 +9,7 @@ abstract interface class InterstitialAdService {
 
   Future<void> initialize();
 
-  void showBeforeRetry(VoidCallback onComplete);
+  void showInterstitial(VoidCallback onComplete);
 }
 
 final interstitialAdServiceProvider = Provider<InterstitialAdService>(
@@ -18,7 +18,7 @@ final interstitialAdServiceProvider = Provider<InterstitialAdService>(
 
 class GoogleInterstitialAdService implements InterstitialAdService {
   static const _testAdUnitId = 'ca-app-pub-3940256099942544/1033173712';
-  static const _releaseAdUnitId = 'ca-app-pub-2698119679435877/7076386021';
+  static const _releaseAdUnitId = 'ca-app-pub-2698119679435877/3138577800';
 
   InterstitialAd? _ad;
   bool _isInitialized = false;
@@ -44,7 +44,7 @@ class GoogleInterstitialAdService implements InterstitialAdService {
   }
 
   @override
-  void showBeforeRetry(VoidCallback onComplete) {
+  void showInterstitial(VoidCallback onComplete) {
     if (_isShowing) return;
 
     final ad = _ad;

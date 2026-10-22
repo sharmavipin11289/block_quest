@@ -39,7 +39,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
   final List<_ClearEffect> _clearEffects = [];
   String? _lineClearMessage;
   String? _comboMessage;
-  bool _retryInProgress = false;
+  bool _interstitialInProgress = false;
 
   @override
   void initState() {
@@ -795,13 +795,13 @@ class _GameScreenState extends ConsumerState<GameScreen>
   }
 
   void _restart(GameViewModel vm) {
-    if (_retryInProgress) return;
-    setState(() => _retryInProgress = true);
-    ref.read(interstitialAdServiceProvider).showBeforeRetry(() {
+    if (_interstitialInProgress) return;
+    setState(() => _interstitialInProgress = true);
+    ref.read(interstitialAdServiceProvider).showInterstitial(() {
       if (!mounted) return;
       _clearVisuals();
       vm.start(mode: widget.mode);
-      setState(() => _retryInProgress = false);
+      setState(() => _interstitialInProgress = false);
     });
   }
 
@@ -831,8 +831,14 @@ class _GameScreenState extends ConsumerState<GameScreen>
   }
 
   void _advanceLevel(GameViewModel vm) {
-    _clearVisuals();
-    vm.nextLevel();
+    if (_interstitialInProgress) return;
+    setState(() => _interstitialInProgress = true);
+    ref.read(interstitialAdServiceProvider).showInterstitial(() {
+      if (!mounted) return;
+      _clearVisuals();
+      vm.nextLevel();
+      setState(() => _interstitialInProgress = false);
+    });
   }
 
   Widget _levelComplete(GameState g, GameViewModel vm) => _CelebrationOverlay(
@@ -946,7 +952,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
                     width: min(360, constraints.maxWidth - 48),
                     height: 64,
                     child: FilledButton.icon(
-                      onPressed: _retryInProgress ? null : () => _restart(vm),
+                      onPressed: _interstitialInProgress
+                          ? null
+                          : () => _restart(vm),
                       icon: const Icon(Icons.play_arrow_rounded, size: 32),
                       label: const Text(
                         'PLAY AGAIN',
